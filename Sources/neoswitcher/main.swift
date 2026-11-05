@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var buffer = WordBuffer()
     let tap = EventTap()
     var retryTimer: Timer?
+    lazy var corrector = Corrector(layouts: layouts)
     let scorer = DictionaryScorer()
     lazy var detector = Detector(scorer: scorer)
 
@@ -18,9 +19,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Reset on app switch.
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
-        ) { [weak self] _ in self?.buffer.reset() }
+        ) { [weak self] _ in
+            self?.buffer.reset()
+            self?.corrector.clearUndo()
+        }
 
-        tap.onMouseDown = { [weak self] in self?.buffer.reset() }
+        tap.onMouseDown = { [weak self] in
+            self?.buffer.reset()
+            self?.corrector.clearUndo()
+        }
         tap.onKeyDown = { [weak self] code, mods, auto in self?.handleKey(code, mods, auto) }
 
         Log.info("enabled layouts: " + layouts.layouts.map { "\($0.id)[\($0.language)]" }.joined(separator: ", "))
@@ -59,7 +66,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func handleKey(_ code: UInt16, _ mods: Modifiers, _ auto: Bool) {
-        if IsSecureEventInputEnabled() { buffer.reset(); return }
+        if IsSecureEventInputEnabled() { buffer.reset(); corrector.clearUndo(); return }
+
+        // Backspace right after a correction undoes it; any other key forgets the correction.
+        if corrector.hasPendingUndo {
+            if code == KeyCode.delete, mods.isDisjoint(with: .chord), !auto {
+                buffer.reset()
+                // Outside the tap callback; undo() clears its own state first.
+                DispatchQueue.main.async { [corrector] in corrector.undo() }
+                return
+            }
+            corrector.clearUndo()
+        }
         guard case .wordEnded(let keys) = buffer.handleKeyDown(keyCode: code, modifiers: mods, isAutorepeat: auto) else { return }
 
         guard let current = layouts.current() else {
@@ -68,9 +86,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let alts = layouts.alternatives(to: current)
         if let c = detector.detect(keys: keys, current: current, alternatives: alts) {
-            // Phase 3 will perform the correction here.
-            Log.decision("would correct \(current.id) -> \(c.targetID), len=\(keys.count)")
             Log.content("\(c.original) -> \(c.corrected)")
+            // Perform outside the tap callback.
+            DispatchQueue.main.async { [corrector] in corrector.correct(c, from: current) }
         } else {
             Log.decision("skipped: no correction, layout=\(current.id), len=\(keys.count)")
         }
