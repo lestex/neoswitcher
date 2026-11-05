@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    env:
+      # The secrets context is not readable from a step-level `if`, so it comes
+      # through job env instead.
+      TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+      SIGNING_CERT_P12: ${{ secrets.SIGNING_CERT_P12 }}
+      SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # macOS ties Accessibility / Input Monitoring grants to the code signature,
+      # so releases are signed with the same self-signed certificate every time.
+      # Without it a `brew upgrade` would drop the user's grants.
+      - name: Import the signing certificate
+        run: |
+          if [ -z "$SIGNING_CERT_P12" ]; then
+            echo "SIGNING_CERT_P12 is not set; falling back to an ad-hoc signature"
+            echo "ALLOW_ADHOC=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          KC="$RUNNER_TEMP/signing.keychain-db"
+          KC_PASS="$(uuidgen)"
+          echo "$SIGNING_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KC_PASS" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KC_PASS" "$KC"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$SIGNING_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KC_PASS" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          # codesign refuses an untrusted self-signed identity ("no identity found").
+          security find-certificate -a -p "$KC" > "$RUNNER_TEMP/cert.pem"
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k "$KC" "$RUNNER_TEMP/cert.pem"
+          IDENTITY="$(security find-identity -v -p codesigning "$KC" | sed -n 's/.*"\(.*\)"/\1/p' | head -1)"
+          [ -n "$IDENTITY" ] || { echo "no valid signing identity after import" >&2; exit 1; }
+          echo "CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      - name: Build
+        run: |
+          NEOSWITCHER_VERSION="${GITHUB_REF_NAME#v}" ./build.sh
+          codesign -dv NeoSwitcher.app 2>&1 | grep -E "Identifier|Authority|Signature"
+
+      - name: Package
+        run: |
+          ditto -c -k --keepParent NeoSwitcher.app "NeoSwitcher-${GITHUB_REF_NAME}.zip"
+          ./tools/make-dmg.sh "NeoSwitcher-${GITHUB_REF_NAME}.dmg"
+          shasum -a 256 "NeoSwitcher-${GITHUB_REF_NAME}".*
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ZIP="NeoSwitcher-${GITHUB_REF_NAME}.zip"
+          DMG="NeoSwitcher-${GITHUB_REF_NAME}.dmg"
+          SHA_ZIP=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)
+          SHA_DMG=$(shasum -a 256 "$DMG" | cut -d' ' -f1)
+          cat > notes.md <<NOTES
+          Apple Silicon, macOS 14 or later.
+
+          ### Install
+
+          \`\`\`sh
+          brew install --cask --no-quarantine lestex/tap/neoswitcher
+          \`\`\`
+
+          or open the .dmg and drag \`NeoSwitcher.app\` to Applications.
+
+          The app is signed with a self-signed certificate and not notarised, so
+          macOS blocks the first launch unless it was installed with
+          \`--no-quarantine\`. Otherwise choose **Open Anyway** under System
+          Settings → Privacy & Security, or:
+
+          \`\`\`sh
+          xattr -dr com.apple.quarantine /Applications/NeoSwitcher.app
+          \`\`\`
+
+          Then grant **Input Monitoring** and **Accessibility** in System Settings →
+          Privacy & Security, and download word lists (see the README).
+
+          \`\`\`
+          SHA-256  $SHA_DMG  $DMG
+          SHA-256  $SHA_ZIP  $ZIP
+          \`\`\`
+          NOTES
+          gh release create "$GITHUB_REF_NAME" "$ZIP" "$DMG" \
+            --title "NeoSwitcher ${GITHUB_REF_NAME}" --notes-file notes.md
+
+      # Skipped on forks and wherever TAP_TOKEN is not set, so the release
+      # itself never fails just because the tap cannot be reached.
+      - name: Bump the Homebrew cask
+        if: env.TAP_TOKEN != ''
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          SHA=$(shasum -a 256 "NeoSwitcher-${GITHUB_REF_NAME}.dmg" | cut -d' ' -f1)
+          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/lestex/homebrew-tap.git" tap
+          cd tap
+          /usr/bin/sed -i '' \
+            -e "s/^  version .*/  version \"$VERSION\"/" \
+            -e "s/^  sha256 .*/  sha256 \"$SHA\"/" \
+            Casks/neoswitcher.rb
+          git diff --quiet && { echo "cask already current"; exit 0; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -qam "neoswitcher $VERSION"
+          git push -q

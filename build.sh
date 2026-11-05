@@ -3,6 +3,7 @@
 #
 #   CODESIGN_IDENTITY="NeoSwitcher Dev" ./build.sh     # stable identity (recommended)
 #   ALLOW_ADHOC=1 ./build.sh                           # ad-hoc: TCC grants reset on every build
+#   NEOSWITCHER_VERSION=1.2.3 ...                      # stamps the bundle version (used by CI)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -29,6 +30,10 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp "$BIN" "$APP/Contents/MacOS/neoswitcher"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+if [[ -n "${NEOSWITCHER_VERSION:-}" ]]; then
+  plutil -replace CFBundleShortVersionString -string "$NEOSWITCHER_VERSION" "$APP/Contents/Info.plist"
+  plutil -replace CFBundleVersion -string "$NEOSWITCHER_VERSION" "$APP/Contents/Info.plist"
+fi
 
 codesign --force --options runtime --identifier com.lestex.neoswitcher --sign "$ID" "$APP"
 codesign --verify --strict "$APP"

@@ -18,6 +18,15 @@ model can replace the dictionary lookup later.
 Keystrokes live only in memory. Logs contain layout ids and lengths, never typed text, unless you
 pass `--debug-content`.
 
+## Install with Homebrew
+```sh
+brew install --cask --no-quarantine lestex/tap/neoswitcher
+```
+Releases are signed with a self-signed certificate and are not notarised, so macOS quarantine
+blocks the first launch unless you pass `--no-quarantine` (or run
+`xattr -dr com.apple.quarantine /Applications/NeoSwitcher.app`). Then continue with the word
+lists and permissions below.
+
 ## Setup
 1. Enable the layouts you use (System Settings > Keyboard > Input Sources), e.g. U.S. and Russian.
 2. Download word lists (one `word` or `word count` per line):
@@ -67,6 +76,21 @@ Flags: `--verbose` (decision logging to stderr), `--debug-content` (also logs ty
 `excludedBundleIDs` replaces the defaults (Terminal, iTerm2, Ghostty, 1Password, Bitwarden). Default
 pause hotkey: ctrl+opt+cmd+P (the tap is listen-only, so the app in front also receives the combo).
 Secure Event Input (password fields) always disables NeoSwitcher.
+
+## Releasing
+Push a tag like `v0.1.0`. `.github/workflows/release.yml` builds the app, signs it, attaches a
+`.zip` and `.dmg` to a GitHub release, and bumps `Casks/neoswitcher.rb` in `lestex/homebrew-tap`
+(`packaging/neoswitcher.rb` is the template for the first commit there).
+
+Repository secrets:
+- `SIGNING_CERT_P12`: base64 of the exported `NeoSwitcher Dev` identity
+  (Keychain Access > right-click the certificate > Export… as .p12, then `base64 -i cert.p12 | pbcopy`).
+- `SIGNING_CERT_PASSWORD`: the .p12 password.
+- `TAP_TOKEN`: a token with write access to `lestex/homebrew-tap` (optional; skips the cask bump if unset).
+
+Signing every release with the same certificate keeps users' Accessibility and Input Monitoring
+grants across `brew upgrade`. Without `SIGNING_CERT_P12` the workflow falls back to an ad-hoc
+signature, and grants reset on every update.
 
 ## Tests
 ```sh
