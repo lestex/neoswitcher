@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var buffer = WordBuffer()
     let tap = EventTap()
     var retryTimer: Timer?
+    let scorer = DictionaryScorer()
+    lazy var detector = Detector(scorer: scorer)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Reset on app switch.
@@ -22,7 +24,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tap.onKeyDown = { [weak self] code, mods, auto in self?.handleKey(code, mods, auto) }
 
         Log.info("enabled layouts: " + layouts.layouts.map { "\($0.id)[\($0.language)]" }.joined(separator: ", "))
+        preloadWordLists()
         startTapWhenPermitted()
+    }
+
+    /// Load dictionaries off the main thread; never inside the tap callback.
+    func preloadWordLists() {
+        let languages = Array(Set(layouts.layouts.map(\.language)))
+        DispatchQueue.global(qos: .utility).async { [scorer] in
+            let list = WordList.load(languages: languages)
+            DispatchQueue.main.async {
+                scorer.list = list
+                Log.info("word lists loaded: " + languages.sorted().map { "\($0)=\(list.words[$0]?.count ?? 0)" }.joined(separator: " "))
+            }
+        }
     }
 
     func startTapWhenPermitted() {
@@ -47,16 +62,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if IsSecureEventInputEnabled() { buffer.reset(); return }
         guard case .wordEnded(let keys) = buffer.handleKeyDown(keyCode: code, modifiers: mods, isAutorepeat: auto) else { return }
 
-        // Phase 1: just report decisions-level info. Detection arrives in phase 2.
         guard let current = layouts.current() else {
-            Log.decision("word ended len=\(keys.count) current layout has no uchr; skipped")
+            Log.decision("skipped: current layout has no uchr, len=\(keys.count)")
             return
         }
-        Log.decision("word ended len=\(keys.count) layout=\(current.id)")
-        if Log.debugContent {
-            let alts = layouts.alternatives(to: current)
-            let rendering = ([current] + alts).map { "\($0.language)=\($0.translate(keys))" }.joined(separator: " ")
-            Log.content(rendering)
+        let alts = layouts.alternatives(to: current)
+        if let c = detector.detect(keys: keys, current: current, alternatives: alts) {
+            // Phase 3 will perform the correction here.
+            Log.decision("would correct \(current.id) -> \(c.targetID), len=\(keys.count)")
+            Log.content("\(c.original) -> \(c.corrected)")
+        } else {
+            Log.decision("skipped: no correction, layout=\(current.id), len=\(keys.count)")
         }
     }
 }
