@@ -7,21 +7,31 @@ Log.debugContent = args.contains("--debug-content")
 Log.verbose = args.contains("--verbose") || Log.debugContent
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    let config = Config.load()
     let layouts = LayoutManager()
     var buffer = WordBuffer()
     let tap = EventTap()
-    var retryTimer: Timer?
+    let menu = StatusMenu()
     lazy var corrector = Corrector(layouts: layouts)
     let scorer = DictionaryScorer()
     lazy var detector = Detector(scorer: scorer)
+    var retryTimer: Timer?
+    var paused = false
+    var frontmostExcluded = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Reset on app switch.
+        corrector.eventDelayMicros = config.eventDelayMicros
+        corrector.onChange = { [weak self] in self?.menu.lastCorrection = self?.corrector.lastDescription }
+        menu.onTogglePause = { [weak self] in self?.togglePause() }
+        updateFrontmost(NSWorkspace.shared.frontmostApplication)
+
+        // App switch: reset state and re-evaluate exclusion (cached, never queried per key).
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
-        ) { [weak self] _ in
+        ) { [weak self] note in
             self?.buffer.reset()
             self?.corrector.clearUndo()
+            self?.updateFrontmost(note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)
         }
 
         tap.onMouseDown = { [weak self] in
@@ -33,6 +43,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.info("enabled layouts: " + layouts.layouts.map { "\($0.id)[\($0.language)]" }.joined(separator: ", "))
         preloadWordLists()
         startTapWhenPermitted()
+    }
+
+    func updateFrontmost(_ app: NSRunningApplication?) {
+        let id = app?.bundleIdentifier
+        frontmostExcluded = id.map(config.excludedBundleIDs.contains) ?? false
+        Log.decision("frontmost excluded=\(frontmostExcluded)")
+    }
+
+    func togglePause() {
+        paused.toggle()
+        menu.isPaused = paused
+        buffer.reset()
+        corrector.clearUndo()
+        Log.info(paused ? "paused" : "resumed")
     }
 
     /// Load dictionaries off the main thread; never inside the tap callback.
@@ -66,7 +90,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func handleKey(_ code: UInt16, _ mods: Modifiers, _ auto: Bool) {
-        if IsSecureEventInputEnabled() { buffer.reset(); corrector.clearUndo(); return }
+        // Pause hotkey works everywhere (before chord reset and exclusions). The tap is
+        // listen-only, so the key combo still reaches the frontmost app.
+        if !auto, config.pauseHotkey.matches(keyCode: code, modifiers: mods) {
+            DispatchQueue.main.async { [weak self] in self?.togglePause() }
+            return
+        }
+        if paused || frontmostExcluded || IsSecureEventInputEnabled() {
+            buffer.reset()
+            corrector.clearUndo()
+            return
+        }
 
         // Backspace right after a correction undoes it; any other key forgets the correction.
         if corrector.hasPendingUndo {
@@ -78,6 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             corrector.clearUndo()
         }
+
         guard case .wordEnded(let keys) = buffer.handleKeyDown(keyCode: code, modifiers: mods, isAutorepeat: auto) else { return }
 
         guard let current = layouts.current() else {
@@ -87,8 +122,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let alts = layouts.alternatives(to: current)
         if let c = detector.detect(keys: keys, current: current, alternatives: alts) {
             Log.content("\(c.original) -> \(c.corrected)")
-            // Perform outside the tap callback.
-            DispatchQueue.main.async { [corrector] in corrector.correct(c, from: current) }
+            // Perform outside the tap callback; re-check pause at post time.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.paused else { return }
+                self.corrector.correct(c, from: current)
+            }
         } else {
             Log.decision("skipped: no correction, layout=\(current.id), len=\(keys.count)")
         }
