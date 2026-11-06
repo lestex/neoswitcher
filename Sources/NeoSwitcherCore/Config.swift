@@ -18,6 +18,18 @@ public struct Hotkey: Equatable {
     }
 }
 
+public enum WordEndKey: String, CaseIterable {
+    case space, `return`, tab
+
+    public var keyCodes: [UInt16] {
+        switch self {
+        case .space: return [KeyCode.space]
+        case .return: return [KeyCode.returnKey, KeyCode.keypadEnter]
+        case .tab: return [KeyCode.tab]
+        }
+    }
+}
+
 public struct Config: Equatable {
     public static let defaultExcludedBundleIDs: Set<String> = [
         "com.apple.Terminal",
@@ -32,6 +44,11 @@ public struct Config: Equatable {
     public var excludedBundleIDs: Set<String> = Config.defaultExcludedBundleIDs
     public var pauseHotkey: Hotkey = .defaultPause
     public var eventDelayMicros: UInt32 = 1500
+    /// Keys that end a word. Default: space only.
+    public var wordEndKeys: Set<WordEndKey> = [.space]
+
+    /// Key codes for `WordBuffer(wordEndKeys:)`.
+    public var wordEndKeyCodes: Set<UInt16> { Set(wordEndKeys.flatMap(\.keyCodes)) }
 
     public init() {}
 
@@ -39,13 +56,22 @@ public struct Config: Equatable {
 
     /// File shape (all keys optional):
     /// { "excludedBundleIDs": ["..."], "pauseHotkey": {"keyCode": 35, "modifiers": ["ctrl","opt","cmd"]},
-    ///   "eventDelayMicros": 1500 }
+    ///   "eventDelayMicros": 1500, "wordEndKeys": ["space", "return", "tab"] }
+    /// `wordEndKeys` defaults to ["space"]; an empty list also means space only.
     /// `excludedBundleIDs` replaces the defaults entirely.
     public static func parse(_ data: Data) -> Config? {
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         var c = Config()
         if let ids = obj["excludedBundleIDs"] as? [String] { c.excludedBundleIDs = Set(ids) }
         if let d = obj["eventDelayMicros"] as? Int, d >= 0 { c.eventDelayMicros = UInt32(d) }
+        if let names = obj["wordEndKeys"] as? [String] {
+            var keys = Set<WordEndKey>()
+            for n in names {
+                guard let k = WordEndKey(rawValue: n.lowercased()) else { return nil }
+                keys.insert(k)
+            }
+            if !keys.isEmpty { c.wordEndKeys = keys }
+        }
         if let h = obj["pauseHotkey"] as? [String: Any], let code = h["keyCode"] as? Int,
            let names = h["modifiers"] as? [String] {
             var m: Modifiers = []

@@ -70,9 +70,17 @@ Flags: `--verbose` (decision logging to stderr), `--debug-content` (also logs ty
 {
   "excludedBundleIDs": ["com.apple.Terminal", "com.googlecode.iterm2"],
   "pauseHotkey": { "keyCode": 35, "modifiers": ["ctrl", "opt", "cmd"] },
-  "eventDelayMicros": 1500
+  "eventDelayMicros": 1500,
+  "wordEndKeys": ["space"]
 }
 ```
+`wordEndKeys` chooses which keys end a word and trigger a correction: any of `"space"`, `"return"`
+(also the keypad Enter) and `"tab"`. The default is `["space"]`. With `"return"` or `"tab"` enabled,
+the word at the end of a line is corrected too: NeoSwitcher erases the word and the line break /
+tab the app has already received, retypes the corrected word and replays the key. Only enable
+them for apps where Return just inserts a line break. In chat boxes, search fields and forms Return
+submits, so the wrong text has already been sent and the replayed Return would submit again.
+Use `excludedBundleIDs` for those apps.
 `excludedBundleIDs` replaces the defaults (Terminal, iTerm2, Ghostty, 1Password, Bitwarden). Default
 pause hotkey: ctrl+opt+cmd+P (the tap is listen-only, so the app in front also receives the combo).
 Secure Event Input (password fields) always disables NeoSwitcher.

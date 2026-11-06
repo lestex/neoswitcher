@@ -9,7 +9,7 @@ Log.verbose = args.contains("--verbose") || Log.debugContent
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let config = Config.load()
     let layouts = LayoutManager()
-    var buffer = WordBuffer()
+    lazy var buffer = WordBuffer(wordEndKeys: config.wordEndKeyCodes)
     let tap = EventTap()
     let menu = StatusMenu()
     lazy var corrector = Corrector(layouts: layouts)
@@ -122,7 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             corrector.clearUndo()
         }
 
-        guard case .wordEnded(let keys) = buffer.handleKeyDown(keyCode: code, modifiers: mods, isAutorepeat: auto) else { return }
+        guard case .wordEnded(let keys, let terminator) = buffer.handleKeyDown(keyCode: code, modifiers: mods, isAutorepeat: auto) else { return }
 
         guard let current = layouts.current() else {
             Log.decision("skipped: current layout has no uchr, len=\(keys.count)")
@@ -134,7 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Perform outside the tap callback; re-check pause at post time.
             DispatchQueue.main.async { [weak self] in
                 guard let self, !self.paused else { return }
-                self.corrector.correct(c, from: current)
+                self.corrector.correct(c, from: current, terminator: terminator)
             }
         } else {
             Log.decision("skipped: no correction, layout=\(current.id), len=\(keys.count)")

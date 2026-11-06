@@ -13,7 +13,7 @@ import Testing
         var b = WordBuffer()
         type(&b, ghbdtn)
         let ev = b.handleKeyDown(keyCode: KeyCode.space, modifiers: [], isAutorepeat: false)
-        #expect(ev == .wordEnded(ghbdtn.map { KeyStroke(keyCode: $0) }))
+        #expect(ev == .wordEnded(ghbdtn.map { KeyStroke(keyCode: $0) }, terminator: KeyCode.space))
         #expect(b.isEmpty)
     }
 
@@ -77,5 +77,37 @@ import Testing
         type(&b, [5])
         b.reset()
         #expect(b.isEmpty)
+    }
+
+    @Test func returnAndTabEndWordsOnlyWhenConfigured() {
+        var b = WordBuffer(wordEndKeys: [KeyCode.space, KeyCode.returnKey, KeyCode.tab])
+        type(&b, ghbdtn)
+        #expect(b.handleKeyDown(keyCode: KeyCode.returnKey, modifiers: [], isAutorepeat: false)
+                == .wordEnded(ghbdtn.map { KeyStroke(keyCode: $0) }, terminator: KeyCode.returnKey))
+        type(&b, ghbdtn)
+        #expect(b.handleKeyDown(keyCode: KeyCode.tab, modifiers: [], isAutorepeat: false)
+                == .wordEnded(ghbdtn.map { KeyStroke(keyCode: $0) }, terminator: KeyCode.tab))
+        // Empty buffer + Return is a no-op, and other reset keys still reset.
+        #expect(b.handleKeyDown(keyCode: KeyCode.returnKey, modifiers: [], isAutorepeat: false) == .none)
+        type(&b, [5, 4])
+        b.handleKeyDown(keyCode: 123, modifiers: [], isAutorepeat: false)
+        #expect(b.isEmpty)
+    }
+
+    @Test func defaultBufferIgnoresReturnAsTerminator() {
+        var b = WordBuffer()
+        type(&b, ghbdtn)
+        #expect(b.handleKeyDown(keyCode: KeyCode.returnKey, modifiers: [], isAutorepeat: false) == .none)
+        #expect(b.isEmpty)
+    }
+
+    @Test func emptyWordEndSetFallsBackToSpace() {
+        var b = WordBuffer(wordEndKeys: [])
+        type(&b, ghbdtn)
+        if case .wordEnded(_, let t) = b.handleKeyDown(keyCode: KeyCode.space, modifiers: [], isAutorepeat: false) {
+            #expect(t == KeyCode.space)
+        } else {
+            Issue.record("space should end the word")
+        }
     }
 }

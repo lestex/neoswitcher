@@ -32,16 +32,25 @@ final class Corrector {
     var hasPendingUndo: Bool { applied != nil }
     func clearUndo() { applied = nil }
 
-    func correct(_ c: Correction, from current: Layout) {
+    /// `terminator` is the key that ended the word (space, or return/tab if enabled in config).
+    func correct(_ c: Correction, from current: Layout, terminator: UInt16 = KeyCode.space) {
         guard let target = layouts.layouts.first(where: { $0.id == c.targetID }) else { return }
         guard !IsSecureEventInputEnabled(), Permissions.accessibilityGranted(prompt: false) else {
             Log.decision("skipped: secure input or no Accessibility at post time")
             return
         }
-        // original text + the space the user already typed
+        // original text + the terminator the user already typed (space, or a line break / tab)
         postBackspaces(c.original.count + 1)
         layouts.select(target)
-        postText(c.corrected + " ")
+        if terminator == KeyCode.space {
+            postText(c.corrected + " ")
+        } else {
+            // Replay Return/Tab as real key events; a Unicode "\n" is not treated as Return everywhere.
+            postText(c.corrected)
+            let code = CGKeyCode(terminator == KeyCode.tab ? KeyCode.tab : KeyCode.returnKey)
+            post(keyCode: code, down: true)
+            post(keyCode: code, down: false)
+        }
         applied = Applied(originalLayout: current, originalText: c.original, correctedText: c.corrected)
         lastDescription = "\(current.name) → \(target.name)"
         Log.decision("corrected \(current.id) -> \(target.id), len=\(c.original.count)")

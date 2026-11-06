@@ -1,8 +1,9 @@
 /// Result of feeding a key to the buffer.
 public enum BufferEvent: Equatable {
     case none
-    /// Space pressed: the word (keys before the space) is ready for evaluation.
-    case wordEnded([KeyStroke])
+    /// A word-ending key was pressed: the word (keys before it) is ready for evaluation.
+    /// `terminator` is the key code that ended it (space by default).
+    case wordEnded([KeyStroke], terminator: UInt16)
 }
 
 /// Word buffer state machine. Stores physical keys, never characters.
@@ -14,7 +15,13 @@ public struct WordBuffer {
     /// Set when the word exceeded `maxLength`; such words are never evaluated.
     private var overflowed = false
 
-    public init() {}
+    /// Key codes that end a word and trigger evaluation. Default: space only. Return/Tab/Enter
+    /// reset the buffer unless the user opts in via config.
+    public let wordEndKeys: Set<UInt16>
+
+    public init(wordEndKeys: Set<UInt16> = [KeyCode.space]) {
+        self.wordEndKeys = wordEndKeys.isEmpty ? [KeyCode.space] : wordEndKeys
+    }
 
     public var isEmpty: Bool { keys.isEmpty }
 
@@ -39,10 +46,10 @@ public struct WordBuffer {
 
         if isAutorepeat { return .none }
 
-        if keyCode == KeyCode.space {
+        if wordEndKeys.contains(keyCode) {
             defer { reset() }
             if overflowed || keys.isEmpty { return .none }
-            return .wordEnded(keys)
+            return .wordEnded(keys, terminator: keyCode)
         }
 
         if KeyCode.wordKeys.contains(keyCode) {
@@ -56,7 +63,8 @@ public struct WordBuffer {
             return .none
         }
 
-        // return, tab, escape, arrows, home/end/pgup/pgdn, F-keys, keypad, anything else.
+        // return, tab, escape, arrows, home/end/pgup/pgdn, F-keys, keypad, anything else
+        // that is not a configured word-end key.
         reset()
         return .none
     }

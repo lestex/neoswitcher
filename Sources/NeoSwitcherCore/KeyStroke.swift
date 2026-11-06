@@ -42,6 +42,7 @@ public enum KeyCode {
     public static let space: UInt16 = 49
     public static let delete: UInt16 = 51   // backspace
     public static let returnKey: UInt16 = 36
+    public static let keypadEnter: UInt16 = 76
     public static let tab: UInt16 = 48
     public static let escape: UInt16 = 53
 

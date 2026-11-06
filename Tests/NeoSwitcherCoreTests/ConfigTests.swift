@@ -32,4 +32,15 @@ import Testing
         #expect(!h.matches(keyCode: 35, modifiers: [.control, .option, .command, .shift]))
         #expect(!h.matches(keyCode: 34, modifiers: [.control, .option, .command]))
     }
+
+    @Test func wordEndKeysDefaultAndParse() throws {
+        #expect(Config().wordEndKeys == [.space])
+        #expect(Config().wordEndKeyCodes == [KeyCode.space])
+        let c = try #require(Config.parse(Data(#"{"wordEndKeys":["space","Return","tab"]}"#.utf8)))
+        #expect(c.wordEndKeys == [.space, .return, .tab])
+        #expect(c.wordEndKeyCodes == [KeyCode.space, KeyCode.returnKey, KeyCode.keypadEnter, KeyCode.tab])
+        // empty list -> space only; unknown name -> invalid config
+        #expect(try #require(Config.parse(Data(#"{"wordEndKeys":[]}"#.utf8))).wordEndKeys == [.space])
+        #expect(Config.parse(Data(#"{"wordEndKeys":["enter-ish"]}"#.utf8)) == nil)
+    }
 }
