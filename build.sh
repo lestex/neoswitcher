@@ -29,6 +29,8 @@ BIN="$(swift build -c release --arch arm64 --show-bin-path)/neoswitcher"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp "$BIN" "$APP/Contents/MacOS/neoswitcher"
+mkdir -p "$APP/Contents/Resources"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 if [[ -n "${NEOSWITCHER_VERSION:-}" ]]; then
   plutil -replace CFBundleShortVersionString -string "$NEOSWITCHER_VERSION" "$APP/Contents/Info.plist"

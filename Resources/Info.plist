@@ -3,6 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundleExecutable</key><string>neoswitcher</string>
     <key>CFBundleIdentifier</key><string>com.lestex.neoswitcher</string>
     <key>CFBundleName</key><string>NeoSwitcher</string>
