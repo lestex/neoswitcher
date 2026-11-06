@@ -1,7 +1,5 @@
-# Copy to lestex/homebrew-tap as Casks/neoswitcher.rb (without these two comment lines).
+# Template for lestex/homebrew-tap Casks/neoswitcher.rb (copy without these two comment lines).
 # The release workflow rewrites the `version` and `sha256` lines on every tag.
-# Copy to lestex/homebrew-tap as Casks/neoswitcher.rb. The release workflow
-# rewrites the `version` and `sha256` lines on every tag.
 cask "neoswitcher" do
   version "0.1.0"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
