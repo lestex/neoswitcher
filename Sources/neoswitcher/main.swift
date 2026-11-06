@@ -15,7 +15,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var corrector = Corrector(layouts: layouts)
     let scorer = DictionaryScorer()
     lazy var detector = Detector(scorer: scorer)
-    var retryTimer: Timer?
+    var permissionTimer: Timer?
+    var lastAX: Bool?
+    var lastIM: Bool?
     var paused = false
     var frontmostExcluded = false
 
@@ -71,22 +73,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Asks for both permissions once, then polls: the menu shows what is missing and the tap
+    /// is installed as soon as Input Monitoring is granted (no relaunch needed).
     func startTapWhenPermitted() {
-        let ax = Permissions.accessibilityGranted(prompt: true)
-        var im = Permissions.inputMonitoringGranted()
-        if !im { im = Permissions.requestInputMonitoring() }
-        if tap.install() {
-            Log.info("event tap installed" + (ax ? "" : " (Accessibility still missing: corrections will not be typed)"))
-            return
+        _ = Permissions.accessibilityGranted(prompt: true)
+        if !Permissions.inputMonitoringGranted() { Permissions.requestInputMonitoring() }
+        refreshPermissions()
+        permissionTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            self?.refreshPermissions()
         }
-        Permissions.printInstructions(accessibility: ax, inputMonitoring: im)
-        retryTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] t in
-            guard let self else { return }
-            if self.tap.install() {
-                t.invalidate()
-                Log.info("event tap installed")
-            }
+    }
+
+    func refreshPermissions() {
+        let ax = Permissions.accessibilityGranted(prompt: false)
+        let im = Permissions.inputMonitoringGranted()
+        if ax != lastAX || im != lastIM {
+            lastAX = ax
+            lastIM = im
+            Log.info("permissions: accessibility=\(ax) inputMonitoring=\(im)")
+            if !ax || !im { Permissions.printInstructions(accessibility: ax, inputMonitoring: im) }
         }
+        menu.missingAccessibility = !ax
+        menu.missingInputMonitoring = !im
+        if !tap.isInstalled, im, tap.install() { Log.info("event tap installed") }
     }
 
     func handleKey(_ code: UInt16, _ mods: Modifiers, _ auto: Bool) {

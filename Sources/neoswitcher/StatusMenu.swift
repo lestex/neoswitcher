@@ -8,10 +8,17 @@ final class StatusMenu: NSObject {
     private let toggleItem = NSMenuItem()
     private let lastItem = NSMenuItem()
     private let loginItem = NSMenuItem()
+    private let inputMonitoringItem = NSMenuItem()
+    private let accessibilityItem = NSMenuItem()
 
     var isPaused = false { didSet { refresh() } }
     var lastCorrection: String? { didSet { refresh() } }
     var onTogglePause: (() -> Void)?
+
+    /// Set from the permission poll; drives the warning icon and the "Grant…" items.
+    var missingInputMonitoring = false { didSet { if oldValue != missingInputMonitoring { refresh() } } }
+    var missingAccessibility = false { didSet { if oldValue != missingAccessibility { refresh() } } }
+    private var needsPermissions: Bool { missingInputMonitoring || missingAccessibility }
 
     override init() {
         super.init()
@@ -20,25 +27,45 @@ final class StatusMenu: NSObject {
         lastItem.isEnabled = false
         toggleItem.target = self
         toggleItem.action = #selector(togglePause)
+        inputMonitoringItem.title = "Grant Input Monitoring…"
+        inputMonitoringItem.target = self
+        inputMonitoringItem.action = #selector(openInputMonitoring)
+        accessibilityItem.title = "Grant Accessibility…"
+        accessibilityItem.target = self
+        accessibilityItem.action = #selector(openAccessibility)
         loginItem.title = "Launch at Login"
         loginItem.target = self
         loginItem.action = #selector(toggleLogin)
         let quit = NSMenuItem(title: "Quit NeoSwitcher", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        [stateItem, toggleItem, lastItem, .separator(), loginItem, .separator(), quit].forEach(menu.addItem)
+        [stateItem, inputMonitoringItem, accessibilityItem, toggleItem, lastItem, .separator(), loginItem, .separator(), quit].forEach(menu.addItem)
         item.menu = menu
         refresh()
     }
 
     private func refresh() {
-        let symbol = isPaused ? "keyboard.badge.ellipsis" : "keyboard"
+        let symbol = needsPermissions ? "exclamationmark.triangle" : (isPaused ? "keyboard.badge.ellipsis" : "keyboard")
         if let button = item.button {
             button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "NeoSwitcher")
-            if button.image == nil { button.title = isPaused ? "⏸" : "⌨︎" }
+            if button.image == nil { button.title = needsPermissions ? "⚠︎" : (isPaused ? "⏸" : "⌨︎") }
         }
-        stateItem.title = isPaused ? "Paused" : "Enabled"
+        stateItem.title = needsPermissions ? "Permissions needed" : (isPaused ? "Paused" : "Enabled")
+        inputMonitoringItem.isHidden = !missingInputMonitoring
+        accessibilityItem.isHidden = !missingAccessibility
         toggleItem.title = isPaused ? "Resume" : "Pause"
         lastItem.title = "Last correction: " + (lastCorrection ?? "none")
         loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+    }
+
+    @objc private func openInputMonitoring() {
+        open("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")
+    }
+
+    @objc private func openAccessibility() {
+        open("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+    }
+
+    private func open(_ url: String) {
+        if let u = URL(string: url) { NSWorkspace.shared.open(u) }
     }
 
     @objc private func togglePause() { onTogglePause?() }
