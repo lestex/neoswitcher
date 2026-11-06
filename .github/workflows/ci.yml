@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test
+        # Translation tests use real layouts and skip themselves when a layout
+        # (e.g. Russian) is not enabled on the runner.
+        run: swift test
+
+      - name: Build the app
+        run: ALLOW_ADHOC=1 ./build.sh
+
+      - name: Check the bundle
+        run: |
+          plutil -lint NeoSwitcher.app/Contents/Info.plist
+          codesign --verify --strict --verbose NeoSwitcher.app
+          test -x NeoSwitcher.app/Contents/MacOS/neoswitcher
+          test -f NeoSwitcher.app/Contents/Resources/AppIcon.icns
+          test "$(plutil -extract LSUIElement raw NeoSwitcher.app/Contents/Info.plist)" = "true"

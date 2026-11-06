@@ -2,7 +2,7 @@ import Testing
 @testable import NeoSwitcherCore
 
 private func enabled(_ language: String) -> Layout? {
-    LayoutManager().layouts.first { $0.language == language }
+    sharedLayoutManager.layouts.first { $0.language == language }
 }
 private let hasEn = enabled("en") != nil
 private let hasRu = enabled("ru") != nil
@@ -36,7 +36,7 @@ private let ghbdtn: [UInt16] = [5, 4, 11, 2, 17, 45]
     }
 
     @Test(.enabled(if: hasEn)) func alternativesSkipSameLanguage() {
-        let m = LayoutManager()
+        let m = sharedLayoutManager
         let cur = m.layouts.first { $0.language == "en" }!
         let alts = m.alternatives(to: cur)
         #expect(!alts.contains { $0.language == "en" })

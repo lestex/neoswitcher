@@ -96,13 +96,13 @@ private func detector(en: Set<String> = ["hello", "the", "she"], ruWords: Set<St
 }
 
 private let hasBoth: Bool = {
-    let m = LayoutManager()
+    let m = sharedLayoutManager
     return m.layouts.contains { $0.language == "en" } && m.layouts.contains { $0.language == "ru" }
 }()
 
 @Suite struct DetectorIntegrationTests {
     @Test(.enabled(if: hasBoth)) func realLayoutsGhbdtn() {
-        let m = LayoutManager()
+        let m = sharedLayoutManager
         let en = m.layouts.first { $0.language == "en" }!
         let c = detector().detect(keys: keys("ghbdtn", in: qwerty), current: en, alternatives: m.alternatives(to: en))
         #expect(c?.corrected == "привет")
