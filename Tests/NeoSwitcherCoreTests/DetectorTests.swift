@@ -50,7 +50,20 @@ private func detector(en: Set<String> = ["hello", "the", "she"], ruWords: Set<St
 
     @Test func shortWordsSkipped() {
         let d = detector(en: [], ruWords: ["да", "ру"])
-        #expect(d.detect(keys: keys("lf", in: qwerty), current: us, alternatives: [ru]) == nil)
+        // "ру" is not on the short-word allowlist.
+        #expect(d.detect(keys: keys("he", in: qwerty), current: us, alternatives: [ru]) == nil)
+    }
+
+    @Test func shortAllowlistedWordsCorrect() {
+        let d = detector(en: [])
+        #expect(d.detect(keys: keys("z", in: qwerty), current: us, alternatives: [ru])?.corrected == "я")
+        #expect(d.detect(keys: keys("lf", in: qwerty), current: us, alternatives: [ru])?.corrected == "да")
+    }
+
+    @Test func leadingPunctuationDoesNotHideWord() {
+        // "'nj" -> "это": the apostrophe is a letter in Russian, not in US.
+        let d = detector(ruWords: ["это"])
+        #expect(d.detect(keys: keys("'nj", in: qwerty), current: us, alternatives: [ru])?.corrected == "это")
     }
 
     @Test func validInBothNeverSwitches() {

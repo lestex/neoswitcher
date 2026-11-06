@@ -30,10 +30,26 @@ public struct Correction: Equatable {
 public struct Detector {
     public var scorer: LayoutScorer
     public var minLength: Int
+    /// Words shorter than `minLength` are too ambiguous for the (noisy) dictionaries,
+    /// so they are corrected only when listed here, per language.
+    public var shortWords: [String: Set<String>]
 
-    public init(scorer: LayoutScorer, minLength: Int = 3) {
+    public static let defaultShortWords: [String: Set<String>] = [
+        "ru": ["я", "в", "и", "с", "к", "о", "у", "а",
+               "да", "не", "на", "он", "ты", "мы", "вы", "но", "за", "по", "из", "от", "до",
+               "то", "же", "ли", "бы", "ни", "ну", "ей", "им", "её", "их", "ко", "во", "со"],
+    ]
+
+    public init(scorer: LayoutScorer, minLength: Int = 3,
+                shortWords: [String: Set<String>] = Detector.defaultShortWords) {
         self.scorer = scorer
         self.minLength = minLength
+        self.shortWords = shortWords
+    }
+
+    private func accepts(_ core: String, language: String) -> Bool {
+        if core.count >= minLength { return scorer.isWord(core, language: language) }
+        return !core.isEmpty && shortWords[language]?.contains(core) == true
     }
 
     /// Letters-only core, lowercased: trims non-letters from both ends.
@@ -50,15 +66,14 @@ public struct Detector {
     public func detect(keys: [KeyStroke], current: Layout, alternatives: [Layout]) -> Correction? {
         let typed = current.translate(keys)
         let typedCore = Self.core(typed)
-        guard typedCore.count >= minLength else { return nil }
         // Valid in the current layout (including words valid in both) -> never switch.
-        if scorer.isWord(typedCore, language: current.language) { return nil }
+        if !typedCore.isEmpty, scorer.isWord(typedCore, language: current.language) { return nil }
 
         var matches: [Correction] = []
         for alt in alternatives where alt.language != current.language {
             let text = alt.translate(keys)
             let c = Self.core(text)
-            guard c.count >= minLength, scorer.isWord(c, language: alt.language) else { continue }
+            guard accepts(c, language: alt.language) else { continue }
             matches.append(Correction(targetID: alt.id, targetLanguage: alt.language,
                                       original: typed, corrected: text))
         }
