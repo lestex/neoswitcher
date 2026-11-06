@@ -1,6 +1,5 @@
-# typed: strict
-# frozen_string_literal: true
-
+# Copy to lestex/homebrew-tap as Casks/neoswitcher.rb (without these two comment lines).
+# The release workflow rewrites the `version` and `sha256` lines on every tag.
 # Copy to lestex/homebrew-tap as Casks/neoswitcher.rb. The release workflow
 # rewrites the `version` and `sha256` lines on every tag.
 cask "neoswitcher" do
