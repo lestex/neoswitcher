@@ -38,6 +38,8 @@ public struct Detector {
         "ru": ["я", "в", "и", "с", "к", "о", "у", "а",
                "да", "не", "на", "он", "ты", "мы", "вы", "но", "за", "по", "из", "от", "до",
                "то", "же", "ли", "бы", "ни", "ну", "ей", "им", "её", "их", "ко", "во", "со"],
+        "en": ["a", "i", "am", "an", "as", "at", "be", "by", "do", "go", "he", "hi", "if", "in", "is",
+               "it", "me", "my", "no", "of", "ok", "on", "or", "so", "to", "up", "us", "we"],
     ]
 
     public init(scorer: LayoutScorer, minLength: Int = 3,
@@ -67,7 +69,8 @@ public struct Detector {
         let typed = current.translate(keys)
         let typedCore = Self.core(typed)
         // Valid in the current layout (including words valid in both) -> never switch.
-        if !typedCore.isEmpty, scorer.isWord(typedCore, language: current.language) { return nil }
+        // Short words are judged by the allowlist only: frequency lists are full of junk like "z".
+        if !typedCore.isEmpty, accepts(typedCore, language: current.language) { return nil }
 
         var matches: [Correction] = []
         for alt in alternatives where alt.language != current.language {

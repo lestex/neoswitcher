@@ -60,6 +60,11 @@ private func detector(en: Set<String> = ["hello", "the", "she"], ruWords: Set<St
         #expect(d.detect(keys: keys("lf", in: qwerty), current: us, alternatives: [ru])?.corrected == "да")
     }
 
+    @Test func junkShortEnglishEntryDoesNotBlock() {
+        let d = detector(en: ["z", "hello"])
+        #expect(d.detect(keys: keys("z", in: qwerty), current: us, alternatives: [ru])?.corrected == "я")
+    }
+
     @Test func leadingPunctuationDoesNotHideWord() {
         // "'nj" -> "это": the apostrophe is a letter in Russian, not in US.
         let d = detector(ruWords: ["это"])
